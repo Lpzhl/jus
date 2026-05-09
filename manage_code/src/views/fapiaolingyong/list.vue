@@ -1,0 +1,426 @@
+<template>
+	<div>
+		<div class="center_view">
+			<div class="list_search_view">
+				<el-form :model="searchQuery" class="search_form" >
+					<div class="search_view">
+						<div class="search_label">
+							发票名称：
+						</div>
+						<div class="search_box">
+							<el-input class="search_inp" v-model="searchQuery.fapiaomingcheng" placeholder="发票名称"
+								clearable>
+							</el-input>
+						</div>
+					</div>
+					<div class="search_btn_view">
+						<el-button class="search_btn" type="primary" @click="searchClick()" size="small">搜索</el-button>
+					</div>
+				</el-form>
+				<div class="btn_view">
+					<el-button class="add_btn" type="success" @click="addClick" v-if="btnAuth('fapiaolingyong','新增')">
+						新增
+					</el-button>
+					<el-button class="del_btn" type="danger" :disabled="selRows.length?false:true" @click="delClick(null)"  v-if="btnAuth('fapiaolingyong','删除')">
+						删除
+					</el-button>
+                    <el-button class="statis_btn" type="warning" @click="echartClick1" v-if="btnAuth('fapiaolingyong','发票类型')">
+                        发票类型
+                    </el-button>
+				</div>
+			</div>
+			<el-table
+				v-loading="listLoading" :stripe='false'
+				@selection-change="handleSelectionChange"
+				ref="table"
+				v-if="btnAuth('fapiaolingyong','查看')"
+				:data="list"
+				@row-click="listChange">
+				<el-table-column :resizable='true' align="left" header-align="left" type="selection" width="55" />
+				<el-table-column label="序号" width="70" :resizable='true' align="left" header-align="left">
+					<template #default="scope">{{ (listQuery.page-1)*listQuery.limit+scope.$index + 1}}</template>
+				</el-table-column>
+				<el-table-column min-width="140"
+					:resizable='true'
+					:sortable='false'
+					align="left"
+					header-align="left"
+					prop="fapiaomingcheng"
+					label="发票名称">
+					<template #default="scope">
+						{{scope.row.fapiaomingcheng}}
+					</template>
+				</el-table-column>
+				<el-table-column min-width="140"
+					:resizable='true'
+					:sortable='false'
+					align="left"
+					header-align="left"
+					prop="fapiaoleixing"
+					label="发票类型">
+					<template #default="scope">
+						{{scope.row.fapiaoleixing}}
+					</template>
+				</el-table-column>
+				<el-table-column min-width="140"
+					:resizable='true'
+					:sortable='false'
+					align="left"
+					header-align="left"
+					prop="shangchuanshijian"
+					label="上传时间">
+					<template #default="scope">
+						{{scope.row.shangchuanshijian}}
+					</template>
+				</el-table-column>
+				<el-table-column min-width="140"
+					:resizable='true'
+					:sortable='false'
+					align="left"
+					header-align="left"
+					prop="qiyemingcheng"
+					label="企业名称">
+					<template #default="scope">
+						{{scope.row.qiyemingcheng}}
+					</template>
+				</el-table-column>
+				<el-table-column label="操作" class-name="operation-cell" width="300"  :resizable='true' :sortable='false' align="left" header-align="left">
+					<template #default="scope">
+						<el-button class="view_btn" type="info" v-if=" btnAuth('fapiaolingyong','查看')" @click="infoClick(scope.row.id)">
+							详情
+						</el-button>
+						<el-button class="edit_btn" type="primary" @click="editClick(scope.row.id,scope.row)" v-if=" btnAuth('fapiaolingyong','修改')">
+							修改						</el-button>
+						<el-button class="del_btn" type="danger" @click="delClick(scope.row.id,scope.row)"  v-if="btnAuth('fapiaolingyong','删除')">
+							删除						</el-button>
+					</template>
+				</el-table-column>
+			</el-table>
+			<el-pagination
+				background
+				:layout="layouts.join(',')"
+				:total="total"
+				:page-size="listQuery.limit"
+                v-model:current-page="listQuery.page"
+				prev-text="<"
+				next-text=">"
+				:hide-on-single-page="true"
+				:page-sizes="[10, 20, 30, 40, 50, 100]"
+				@size-change="sizeChange"
+				@current-change="currentChange"  />
+		</div>
+		<formModel ref="formRef" @formModelChange="formModelChange"></formModel>
+		<!-- 统计图弹窗 -->
+		<el-dialog v-model="echartVisible" modal-class="edit_form_modal" class="edit_form" title="统计图" width="70%">
+			<div >
+				<div id="fapiaoleixingEchart1" style="width:100%;height:600px;"></div>
+			</div>
+			<template #footer>
+				<span class="formModel_btn_box">
+					<el-button class="cancel_btn" @click="echartVisible=false">取消</el-button>
+				</span>
+			</template>
+		</el-dialog>
+	</div>
+</template>
+<script setup>
+	import axios from 'axios'
+	const moment = window.moment
+	import {
+		reactive,
+		ref,
+		getCurrentInstance,
+		nextTick,
+		onMounted,
+		watch,
+		computed,
+		inject
+	} from 'vue'
+	import {
+		useRoute,
+		useRouter
+	} from 'vue-router'
+	import {
+		useStore
+	} from 'vuex';
+	const store = useStore()
+	const user = computed(()=>store.getters['user/session'])
+	const context = getCurrentInstance()?.appContext.config.globalProperties;
+	const baseUrl = ref(context.$config.url)
+	import formModel from './formModel.vue'
+	//基础信息
+	const tableName = 'fapiaolingyong'
+	const formName = '发票领用'
+	const route = useRoute()
+    const router = useRouter()
+	const role = context.$toolUtil.storageGet('sessionTable')
+	//基础信息
+	onMounted(()=>{
+	})
+	//列表数据
+	const list = ref(null)
+	const table = ref(null)
+	const listQuery = ref({
+		page: 1,
+		limit: 20,
+		sort: 'id',
+		order: 'desc'
+	})
+	const searchQuery = ref({})
+	const selRows = ref([])
+	const listLoading = ref(false)
+	const listChange = (row) =>{
+		nextTick(()=>{
+			//table.value.clearSelection()
+			table.value.toggleRowSelection(row)
+		})
+	}
+	//列表
+	const getList = () => {
+		listLoading.value = true
+		let params = JSON.parse(JSON.stringify(listQuery.value))
+		params['sort'] = 'id'
+		params['order'] = 'desc'
+		if(searchQuery.value.fapiaomingcheng&&searchQuery.value.fapiaomingcheng!=''){
+			params['fapiaomingcheng'] = '%' + searchQuery.value.fapiaomingcheng + '%'
+		}
+		context.$http({
+			url: `${tableName}/page`,
+			method: 'get',
+			params: params
+		}).then(res => {
+			listLoading.value = false
+			list.value = res.data.data.list
+			total.value = Number(res.data.data.total)
+		})
+	}
+	//删
+	const delClick = (id,row={}) => {
+		let ids = []
+		if (id) {
+			ids = [id]
+		} else {
+			if (selRows.value.length) {
+				for (let x in selRows.value) {
+					ids.push(selRows.value[x].id)
+				}
+			} else {
+				return false
+			}
+		}
+		ElMessageBox.confirm(`是否删除选中${formName}`, '提示', {
+			confirmButtonText: '是',
+			cancelButtonText: '否',
+			type: 'warning',
+		}).then(() => {
+			context.$http({
+				url: `${tableName}/delete`,
+				method: 'post',
+				data: ids
+			}).then(res => {
+				context?.$toolUtil.message('删除成功', 'success',()=>{
+					getList()
+				})
+			})
+		}).catch(_ => {})
+	}
+	//多选
+	const handleSelectionChange = (e) => {
+		selRows.value = e
+	}
+	//列表数据
+	//分页
+	const total = ref(0)
+	const layouts = ref(["total","prev","pager","next"])
+	const sizeChange = (size) => {
+		listQuery.value.limit = size
+		getList()
+	}
+	const currentChange = (page) => {
+		listQuery.value.page = page
+		getList()
+	}
+	//分页
+	//权限验证
+	const btnAuth = (e,a)=>{
+		return context?.$toolUtil.isAuth(e,a)
+	}
+	//搜索
+	const searchClick = () => {
+		listQuery.value.page = 1
+		getList()
+	}
+	//表单
+	const formRef = ref(null)
+	const formModelChange=()=>{
+		searchClick()
+	}
+	const addClick = ()=>{
+		formRef.value.init()
+	}
+	const editClick = (id=null,row={})=>{
+		if(id){
+			formRef.value.init(id,'edit')
+			return
+		}
+		if(selRows.value.length){
+			formRef.value.init(selRows.value[0].id,'edit')
+		}
+	}
+
+	const infoClick = (id=null)=>{
+		if(id){
+			formRef.value.init(id,'info')
+		}
+		else if(selRows.value.length){
+			formRef.value.init(selRows.value[0].id,'info')
+		}
+	}
+	// 表单
+	// 预览文件
+	const preClick = (file) =>{
+		if(!file){
+			context?.$toolUtil.message('文件不存在','error')
+		}
+		window.open(context?.$config.url + file)
+	}
+	// 下载文件
+	const download = (file) => {
+		if(!file){
+			context?.$toolUtil.message('文件不存在','error')
+		}
+		let arr = file.replace(new RegExp('file/', "g"), "")
+		axios.get((location.href.split(context?.$config.name).length>1 ? location.href.split(context?.$config.name)[0] :'') + context?.$config.name + '/file/download?fileName=' + arr, {
+			headers: {
+				token: context?.$toolUtil.storageGet('Token')
+			},
+			responseType: "blob"
+		}).then(({
+			data
+		}) => {
+			const binaryData = [];
+			binaryData.push(data);
+			const objectUrl = window.URL.createObjectURL(new Blob(binaryData, {
+				type: 'application/pdf;chartset=UTF-8'
+			}))
+			const a = document.createElement('a')
+			a.href = objectUrl
+			a.download = arr
+			// a.click()
+			// 下面这个写法兼容火狐
+			a.dispatchEvent(new MouseEvent('click', {
+				bubbles: true,
+				cancelable: true,
+				view: window
+			}))
+			window.URL.revokeObjectURL(data)
+		})
+	}
+    import '@/assets/js/echarts-theme'
+	//判断是否有统计图筛选权限
+	const changeStatQuery = (arr)=>{
+		if(!arr){
+			return true
+		}
+		let role = localStorage.getItem('role')
+		for(let x in arr){
+			if(arr[x] == role) {
+				return true
+			}
+		}
+		return false
+	}
+	// 统计图1
+	const echartVisible = ref(false)
+	const echartClick1 = ()=>{
+		if(!route.path.endsWith('Analysis')){
+			echartVisible.value = true
+		}
+		nextTick(async ()=>{
+			let dom = document.getElementById("fapiaoleixingEchart1")
+			if(!dom)return
+			var fapiaoleixingEchart1 = echarts.init(dom,'theme');
+			let params = {}
+			context.$http({
+				url: `${tableName}/group/fapiaoleixing?order=desc`,
+				method: 'get',
+				params
+			}).then(res=>{
+				let obj = res.data.data
+				let xAxis = [];
+				let yAxis = [];
+				let dataList = []
+				for(let i=0;i<obj.length;i++){
+				    xAxis.push(obj[i].fapiaoleixing);
+				    yAxis.push(parseFloat((obj[i].total)));
+                    dataList.push({
+				        value: parseFloat((obj[i].total)),
+				        name: obj[i].fapiaoleixing				    })
+				}
+				var option = {};
+				option = {
+    title:{
+        show:false,
+        text: '发票类型',
+        left: 'center'
+    },
+    legend: {
+        orient: 'horizontal',
+        type: 'scroll', // 启用滚动条
+        left: 'center',
+        padding:[20,0,0,0]
+    },
+    tooltip: {
+        trigger: 'item',
+        formatter: '{b} : {c} ({d}%)'
+    },
+    series: [
+        {
+            left: '10%',
+            type: 'pie',
+            radius: '55%',
+            center: ['50%', '60%'],
+            data: dataList.slice(0,12), 
+            emphasis: {
+                itemStyle: {
+                  shadowBlur: 10,
+                  shadowOffsetX: 0,
+                  shadowColor: 'rgba(0, 0, 0, 0.5)'
+                }
+            }
+        }
+    ]
+}
+				// 使用刚指定的配置项和数据显示图表。
+				fapiaoleixingEchart1.setOption(option);
+				  //根据窗口的大小变动图表
+				window.onresize = function() {
+				    fapiaoleixingEchart1.resize();
+				};
+			})
+		})
+	}
+	//初始化
+	const init = () => {
+		getList()
+	}
+	init()
+</script>
+<style lang="scss" scoped>
+	// 表格样式
+	.el-table {
+		:deep(.el-table__body-wrapper) {
+			tbody {
+			}
+		}
+	}
+	.condition-box {
+		display: flex;
+		gap: 10px;
+		justify-content: center;
+	}
+
+	.condition-box>* {
+		max-width: 300px;
+	}
+</style>
