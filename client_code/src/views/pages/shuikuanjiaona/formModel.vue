@@ -146,6 +146,10 @@
     const activeName = ref('false')
 	const startTime = ref('')
 	const endTime = ref('')
+	const isExpired = ref(false)
+	const onCountdownEnd = () => {
+		isExpired.value = true
+	}
 	const getDetail = () => {
 		context?.$http({
 			url: `${tableName}/detail/${route.query.id}`,
@@ -153,6 +157,9 @@
 		}).then(res => {
 			startTime.value = new Date().getTime()
 			endTime.value = new Date(res.data.data.reversetime).getTime()
+			if (endTime.value <= startTime.value) {
+				isExpired.value = true
+			}
 			detail.value = res.data.data
 		})
 	}
